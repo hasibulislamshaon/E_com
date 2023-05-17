@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.http import JsonResponse
 from .models import *
 
 # Create your views here.
@@ -32,3 +33,5 @@ def cheakout(request):
         order = {'get_cart_total':0, 'get_cart_items':0}
     context={'items':items,'order':order}
     return render(request,"cheakout.html",context)
+def updateItem(request):
+    return JsonResponse('Item was Added', safe=False)
