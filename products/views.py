@@ -3,6 +3,8 @@ from django.http import JsonResponse
 from .models import *
 import json
 import datetime
+from . utils import cookieCart,cartData,guestOrder
+
 
 # Create your views here.
 
@@ -11,55 +13,20 @@ import datetime
 
 def store(request):
 
-    if request.user.is_authenticated:
-        customer=request.user.customer
-        order, created = Order.objects.get_or_create(customer=customer,complete =False)
-        items = order.orderitem_set.all()
-        cartItems=order.get_cart_items
-    else:
-        items=[]
-        order = {'get_cart_total':0, 'get_cart_items':0,'shipping':False}
-        cartItems=order['get_cart_items']
-
+    Data = cartData(request)
+    cartItems = Data['cartItems']
     products = Product.objects.all()
     context={'products':products, 'cartItems':cartItems}
     return render(request,"store.html",context)
 
 def cart(request):
-    if request.user.is_authenticated:
-        customer=request.user.customer
-        order, created = Order.objects.get_or_create(customer=customer,complete =False)
-        items = order.orderitem_set.all()
-        cartItems=order.get_cart_items
-    else:
-        try:
-         cart= json.loads(request.COOKIES['cart'])
-        except:
-            cart= {}
-        print('cart:',cart)
-        items=[]
-        order = {'get_cart_total':0, 'get_cart_items':0,'shipping':False}
-        cartItems=order['get_cart_items']
+    
+    Data = cartData(request)
+    cartItems = Data['cartItems']
+    order=Data['order']
+    items = Data['items']
 
-    for i in cart:
-        cartItems += cart[i]['quantity']
-        product= Product.objects.get(id = 1) #might be an error
-        total = (product.price * cart[i]['quantity'])
 
-        order['get_cart_total']+= total
-        order['get_cart_items'] += cart[i]['quantity']
-
-        item = {
-            'product' :{
-                'id' : product.id,
-                'name':product.name,
-                'price':product.price,
-                'imageURL':product.imageURL,
-            },
-            'quantity':cart[i]['quantity'],
-            'get_total':total,
-        }
-        items.append(item)
 
     context={'items':items,'order':order, 'cartItems':cartItems}
     return render(request,"cart.html",context)
@@ -68,18 +35,20 @@ def cart(request):
 from django.views.decorators.csrf import csrf_exempt
 @csrf_exempt
 def cheakout(request):
-    if request.user.is_authenticated:
-        customer=request.user.customer
-        order, created = Order.objects.get_or_create(customer=customer,complete =False)
-        items = order.orderitem_set.all()
-        cartItems=order.get_cart_items
-    else:
-        items=[]
-        order = {'get_cart_total':0, 'get_cart_items':0,'shipping':False}
-        cartItems=order['get_cart_items']
+    Data = cartData(request)
+    cartItems = Data['cartItems']
+    order=Data['order']
+    items = Data['items']
+       
 
     context={'items':items,'order':order, 'cartItems':cartItems}
     return render(request,"cheakout.html",context)
+
+
+
+
+
+
 
 def updateItem(request):
     data = json.loads(request.body)
@@ -108,17 +77,21 @@ def updateItem(request):
 def processOrder(request):
     transection_id= datetime.datetime.now().timestamp()
     data = json.loads(request.body)
+
+
     if request.user.is_authenticated:
         customer = request.user.customer
         order, created = Order.objects.get_or_create(customer =customer,complete=False)
-        total = float(data['form']['total'])
-        order.transection_id=transection_id
-
-        if total == order.get_cart_total:
-          order.complete =True
-        order.save()
         
-        if order.shipping == True:
+    else:
+       customer,order = guestOrder(request,data)
+    total = float(data['form']['total'])
+    order.transection_id=transection_id
+
+    if total == order.get_cart_total:
+        order.complete =True
+    order.save()
+    if order.shipping == True:
             ShippingAddress.objects.create(
                 customer=customer,
                 order=order,
@@ -127,7 +100,6 @@ def processOrder(request):
                 state=data['shipping']['state'],
                 zipcode=data['shipping']['zipcode'],
             )
-    else:
-        print('User is not logedin')
+    
     return JsonResponse('Payment Complete', safe=False)
 
